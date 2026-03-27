@@ -1,3 +1,9 @@
+// ==UserScript==
+// @name         Fakes - Monstros - Python
+// @include      https://pt*.tribalwars.com.pt/game.php?*screen=place*
+// @author       MDS (baseado no trabalho original de oSetas)
+// ==/UserScript==
+
 /* =============== CONFIGS =============== */
 var tempo        = 500;
 var tempoSwitch  = 1200;
@@ -10,6 +16,7 @@ var reach2pctCookieName         = 'reach2pct';
 var candidateCookieName         = 'fakeCandidates';
 var maxUnitsCookieName          = 'maxUnits';
 var attacksPerVillageCookieName = 'attacksPerVillage';
+var fillModeCookieName          = 'fillMode'; // 'standard' ou 'spy_focus'
 
 /* =============== UNIT DEFINITIONS =============== */
 var unitGroups = {
@@ -31,8 +38,6 @@ var unitImgs = {
 
 var unitSpeeds = { scout:9, light:10, heavy:11, axe:18, spear:18, sword:22, ram:30, catapult:30 };
 
-// Ordem de preenchimento para fake% mínimo
-// Lógica: 1 spy + 1 ram primeiro, depois preenche por esta ordem até atingir pop mínima
 var fillOrder = ['ram', 'catapult', 'spy', 'axe', 'spear', 'sword', 'light', 'heavy'];
 var fillCap   = { ram:25, catapult:25, spy:50, axe:50, spear:50, sword:50, light:50, heavy:50 };
 
@@ -118,27 +123,42 @@ function buildConfig() {
     var cands     = safeParse(getCookie(candidateCookieName), {});
 
     if (reach2pct) {
-        // Começa sempre com 1 spy + 1 ram
-        if (getAvailableUnits('spy') > 0) config.spy = 1;
-        if (getAvailableUnits('ram') > 0) config.ram = 1;
+        var fillMode  = getCookie(fillModeCookieName) || 'standard';
+        var targetPop = Math.ceil(pts * pct);
+        var currentPop = 0;
 
-        var currentPop = config.spy * popFor('spy') + config.ram * popFor('ram');
-        var targetPop  = Math.ceil(pts * pct);
-
-        // Preenche por ordem até atingir targetPop
-        for (var i = 0; i < fillOrder.length && currentPop < targetPop; i++) {
-            var u   = fillOrder[i];
-            var cap = fillCap[u];
-            var avail = getAvailableUnits(u);
-            var current = config[u];
-            while (current < cap && current < avail && currentPop < targetPop) {
-                current++;
-                currentPop += popFor(u);
+        if (fillMode === 'spy_focus') {
+            if (getAvailableUnits('ram') > 0) { config.ram = 1; currentPop += popFor('ram'); }
+            else if (getAvailableUnits('catapult') > 0) { config.catapult = 1; currentPop += popFor('catapult'); }
+            var spyAvail = getAvailableUnits('spy');
+            while (config.spy < spyAvail && currentPop < targetPop) {
+                config.spy++; currentPop += popFor('spy');
             }
-            config[u] = current;
+            var restOrder = ['ram', 'catapult', 'axe', 'spear', 'sword', 'light', 'heavy'];
+            for (var j = 0; j < restOrder.length && currentPop < targetPop; j++) {
+                var ru = restOrder[j];
+                var rAvail = getAvailableUnits(ru);
+                while (config[ru] < rAvail && currentPop < targetPop) {
+                    config[ru]++; currentPop += popFor(ru);
+                }
+            }
+        } else {
+            if (getAvailableUnits('spy') > 0) { config.spy = 1; currentPop += popFor('spy'); }
+            if (getAvailableUnits('ram') > 0) { config.ram = 1; currentPop += popFor('ram'); }
+
+            for (var i = 0; i < fillOrder.length && currentPop < targetPop; i++) {
+                var u   = fillOrder[i];
+                var cap = fillCap[u];
+                var avail = getAvailableUnits(u);
+                var current = config[u];
+                while (current < cap && current < avail && currentPop < targetPop) {
+                    current++;
+                    currentPop += popFor(u);
+                }
+                config[u] = current;
+            }
         }
     } else {
-        // Sem fake% — usa as caixas manuais / modelo seleccionado
         Object.keys(config).forEach(function(u) {
             if (cands[u] !== false || (parseInt(maxObj[u], 10) || 0) > 0) {
                 config[u] = getEffectiveMax(u);
@@ -153,8 +173,6 @@ function buildConfig() {
 
 /* =============== FILL UNITS =============== */
 function fillUnits(config) {
-    // Usa sempre os valores das caixas do script
-    // (já sincronizadas com o template mas podem ter sido alteradas manualmente)
     var maxObj = getMaxUnits();
     var cands  = safeParse(getCookie(candidateCookieName), {});
     var units  = ['spear','sword','axe','spy','light','heavy','ram','catapult'];
@@ -162,14 +180,12 @@ function fillUnits(config) {
         var scriptBox = document.getElementById('max_' + u);
         var gameInput = document.getElementById('unit_input_' + u);
         if (!gameInput) return;
-        // Lê o valor actual da caixa do script
         var val = 0;
         if (scriptBox && scriptBox.value && scriptBox.value !== 'all') {
             val = parseInt(scriptBox.value, 10) || 0;
         } else if (config && config[u]) {
             val = config[u];
         }
-        // Não envia mais do que o disponível
         var avail = getAvailableUnits(u);
         val = Math.min(val, avail);
         if (val > 0) { gameInput.value = ''; gameInput.value = val; }
@@ -185,7 +201,6 @@ function villageSwitch() {
 function syncTemplateToScriptBoxes(templateName) {
     if (!templateName) return;
 
-    // Clica no link para ler os valores sem alterar o estado do jogo de forma permanente
     var links = document.querySelectorAll('a.troop_template_selector');
     var found = false;
     for (var i = 0; i < links.length; i++) {
@@ -195,7 +210,6 @@ function syncTemplateToScriptBoxes(templateName) {
     }
     if (!found) { updateStatus('❌ Modelo não encontrado'); return; }
 
-    // Lê os valores que o jogo preencheu e guarda nas caixas do script
     setTimeout(function() {
         var current = safeParse(getCookie(candidateCookieName), {});
         var maxObj  = getMaxUnits();
@@ -210,7 +224,6 @@ function syncTemplateToScriptBoxes(templateName) {
             scriptMax.value     = val;
             current[u] = false;
             maxObj[u]  = val;
-            // Limpa o input do jogo para não confundir
             gameInput.value = '';
         });
         setCookie(candidateCookieName, JSON.stringify(current), 365);
@@ -222,8 +235,8 @@ function syncTemplateToScriptBoxes(templateName) {
 
 /* =============== TARGET CALCULATION =============== */
 function calculateTargets() {
-    var coordsSource = getCookie('fakeCoords') || '';
-    var allCoords    = coordsSource.trim().split(/[\s\n]+/).filter(function(c){ return c.includes('|'); });
+    var coordsSource = localStorage.getItem('fakeCoords') || getCookie('fakeCoords') || '';
+    var allCoords    = coordsSource.trim().split(/[\s\r\n,;]+/).filter(function(c){ return c.includes('|'); });
     var apv          = parseInt(getCookie(attacksPerVillageCookieName) || 1, 10);
     var totalAttacks = allCoords.length * apv;
     var attacksDone  = parseInt(getCookie('fakeAttacksDone') || 0, 10);
@@ -389,14 +402,31 @@ function createUI() {
     /* FAKE % */
     var pctVal    = getCookie(fakePctCookieName) || '2';
     var reach2pct = getCookie(reach2pctCookieName) === 'true';
+    var fillMode  = getCookie(fillModeCookieName) || 'standard';
+
     var pctDiv = document.createElement('div');
-    pctDiv.style.cssText = 'margin-bottom:8px;display:flex;align-items:center;gap:6px;';
+    pctDiv.style.cssText = 'margin-bottom:4px;display:flex;align-items:center;gap:6px;';
     pctDiv.innerHTML =
         '<span style="color:#a0b4d0">Fake %:</span> <input type="number" id="fakePctInput" value="' + pctVal + '" step="0.1" min="0.1" style="width:50px"> ' +
         '<input type="checkbox" id="reach2pctCheck" ' + (reach2pct ? 'checked' : '') + '> ' +
         '<label for="reach2pctCheck" id="reach2pctLabel" style="font-size:11px;color:#7aa2d4">' +
         (reach2pct ? 'Atingir ' + pctVal + '% mínimo' : '') + '</label>';
     panelBody.appendChild(pctDiv);
+
+    var fillModeDiv = document.createElement('div');
+    fillModeDiv.id = 'fillModeDiv';
+    fillModeDiv.style.cssText = 'margin-bottom:8px;padding:6px 8px;background:#0d1117;border:1px solid #3d5a99;border-radius:4px;font-size:11px;display:' + (reach2pct ? 'block' : 'none') + ';';
+    fillModeDiv.innerHTML =
+        '<div style="color:#7aa2d4;margin-bottom:4px;font-weight:bold">Modo de preenchimento:</div>' +
+        '<label style="display:flex;align-items:center;gap:5px;margin-bottom:3px;cursor:pointer;">' +
+            '<input type="radio" name="fillMode" id="fillModeStandard" value="standard" ' + (fillMode === 'standard' ? 'checked' : '') + '>' +
+            '<span style="color:#c9d1d9">Mais arietes e catapultas</span>' +
+        '</label>' +
+        '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;">' +
+            '<input type="radio" name="fillMode" id="fillModeSpyFocus" value="spy_focus" ' + (fillMode === 'spy_focus' ? 'checked' : '') + '>' +
+            '<span style="color:#c9d1d9">1 ariete/cata + exploradores</span>' +
+        '</label>';
+    panelBody.appendChild(fillModeDiv);
 
     /* UNIT BOXES */
     var cands    = safeParse(getCookie(candidateCookieName), {spear:true,sword:true,axe:true,spy:false,light:true,heavy:true,ram:true,catapult:true});
@@ -429,7 +459,7 @@ function createUI() {
         '<div style="font-weight:bold;font-size:11px;color:#d4956a;margin-bottom:2px">Coordenadas:</div>' +
         '<textarea id="coordsInput" style="width:100%;height:70px;font-size:10px;border:1px solid #8b4513;' +
             'border-radius:3px;padding:3px;box-sizing:border-box;resize:vertical" ' +
-            'placeholder="500|500 501|500">' + (getCookie('fakeCoords') || '') + '</textarea>' +
+            'placeholder="500|500 501|500">' + (localStorage.getItem('fakeCoords') || getCookie('fakeCoords') || '') + '</textarea>' +
         '<button id="saveCoords" style="width:100%;padding:2px;background:#8b4513;color:#fff;border:none;' +
             'border-radius:3px;cursor:pointer;font-size:10px;margin-top:2px">💾 Guardar coordenadas</button>' +
         '<div style="margin-top:5px;display:flex;align-items:center;gap:6px">' +
@@ -460,7 +490,6 @@ function createUI() {
     statusDiv.textContent = 'Ready';
     panelBody.appendChild(statusDiv);
 
-    /* Signature */
     var sigDiv = document.createElement('div');
     sigDiv.style.cssText = 'text-align:center;font-size:9px;color:#3d5a99;padding:4px 0 2px;border-top:1px solid #2a3a55;margin-top:4px;';
     sigDiv.innerHTML = '⚔️ MDS &nbsp;|&nbsp; <span style="color:#2a3a55">baseado no código original de oSetas</span>';
@@ -485,8 +514,16 @@ function createUI() {
     };
     document.getElementById('reach2pctCheck').onchange = function() {
         setCookie(reach2pctCookieName, this.checked, 365);
+        var fmd = document.getElementById('fillModeDiv');
+        if (fmd) fmd.style.display = this.checked ? 'block' : 'none';
         updateReach2pctLabel(); updateStats();
     };
+
+    document.querySelectorAll('input[name="fillMode"]').forEach(function(radio) {
+        radio.onchange = function() {
+            setCookie(fillModeCookieName, this.value, 365);
+        };
+    });
 
     tplSelect.onchange = function() {
         setCookie('troopTemplateName', this.value, 365);
@@ -507,21 +544,27 @@ function createUI() {
             if (this.value === 'all') return;
             var mo = getMaxUnits(); mo[u] = parseInt(this.value, 10) || 0;
             saveMaxUnits(mo); updateStats();
-            // Feedback visual de auto-save
             this.style.borderColor = '#4a9eff';
             var el = this;
             setTimeout(function(){ el.style.borderColor = ''; }, 800);
         };
     });
 
+    // Sanitiza automaticamente ao sair do campo — extrai só coordenadas X|Y de qualquer texto
+    document.getElementById('coordsInput').addEventListener('blur', function() {
+        var raw = this.value;
+        var matches = raw.match(/\d{1,3}\|\d{1,3}/g);
+        if (matches) {
+            this.value = matches.join(' ');
+        }
+    });
+
+    // *** CORRIGIDO: guarda sempre, sem comparar com o valor anterior ***
     document.getElementById('saveCoords').onclick = function() {
         var newCoords = document.getElementById('coordsInput').value.trim();
-        var oldCoords = getCookie('fakeCoords') || '';
-        if (newCoords !== oldCoords) {
-            // Novas coordenadas — reset do contador
-            setCookie('fakeCoords', newCoords, 365);
-            setCookie('fakeAttacksDone', 0, 1);
-        }
+        localStorage.setItem('fakeCoords', newCoords);
+        setCookie('fakeCoords', newCoords.substring(0, 500), 365); // fallback curto
+        setCookie('fakeAttacksDone', 0, 1);
         updateStatus('✅ Coordenadas guardadas!');
         setTimeout(function(){ updateStatus('Ready'); }, 2000);
         updateStats();
@@ -540,7 +583,6 @@ function createUI() {
         this.style.color       = !on ? 'white'   : 'black';
         updateStatus(!on ? 'Script ENABLED' : 'Script DISABLED');
         if (!on) {
-            // Limpa todos os cookies residuais antes de começar
             setCookie('fakeAttacksDone', 0, 1);
             deleteCookie('showCongrats');
             deleteCookie(attackCookieName);
@@ -557,8 +599,6 @@ async function main() {
     createUI();
 
     if (Praca) {
-
-        // Mostra popup de parabéns — verifica antes do check de enabled
 
         var congratsTotal = getCookie('showCongrats');
         if (congratsTotal) {
@@ -580,7 +620,6 @@ async function main() {
             document.body.appendChild(popup);
         }
 
-        // Só continua se o script estiver activo
         if (getCookie(enabledCookieName) !== 'true') return;
 
         if (getCookie('pendingVillageSwitch') === 'true') {
@@ -605,7 +644,6 @@ async function main() {
 
         var config = buildConfig();
 
-        // Se não há config mas há modelo seleccionado, envia com o que estiver disponível
         if (!config && getCookie('troopTemplateName')) {
             var fallback = {spear:0,sword:0,axe:0,spy:0,light:0,heavy:0,ram:0,catapult:0};
             var fallbackTotal = 0;
@@ -663,12 +701,10 @@ async function main() {
             var done     = parseInt(getCookie('fakeAttacksDone') || 0, 10);
             var newDone  = done + 1;
             setCookie('fakeAttacksDone', newDone, 1);
-            // Verifica se foi o último ataque
-            var allCoords   = (getCookie('fakeCoords') || '').trim().split(/[\s\n]+/).filter(function(c){ return c.includes('|'); });
+            var allCoords   = (localStorage.getItem('fakeCoords') || getCookie('fakeCoords') || '').trim().split(/[\s\n\r,;]+/).filter(function(c){ return c.includes('|'); });
             var apv         = parseInt(getCookie(attacksPerVillageCookieName) || 1, 10);
             var totalAtt    = allCoords.length * apv;
             if (newDone >= totalAtt) {
-                // Último ataque — guarda flag para mostrar popup na página seguinte
                 setCookie('fakeAttacksDone', 0, 1);
                 setCookie(enabledCookieName, 'false', 365);
                 setCookie('showCongrats', totalAtt, 1);
