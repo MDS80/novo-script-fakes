@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Fakes - Monstros - Python
+// @name         Fakes MDS80
 // @include      https://pt*.tribalwars.com.pt/game.php?*screen=place*
 // @author       MDS (baseado no trabalho original de oSetas)
 // ==/UserScript==
