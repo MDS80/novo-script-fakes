@@ -1,10 +1,8 @@
 // ==UserScript==
-// @name         Fakes MDS80
+// @name         Fakes - Monstros - Python
 // @include      https://pt*.tribalwars.com.pt/game.php?*screen=place*
 // @author       MDS (baseado no trabalho original de oSetas)
 // ==/UserScript==
-
-console.log("⚔️ MDS Scripts © 2026");
 
 /* =============== CONFIGS =============== */
 var tempo        = 500;
@@ -19,6 +17,7 @@ var candidateCookieName         = 'fakeCandidates';
 var maxUnitsCookieName          = 'maxUnits';
 var attacksPerVillageCookieName = 'attacksPerVillage';
 var fillModeCookieName          = 'fillMode'; // 'standard' ou 'spy_focus'
+var catapultTargetCookieName    = 'catapultTarget'; // edifício alvo das catapultas
 
 /* =============== UNIT DEFINITIONS =============== */
 var unitGroups = {
@@ -430,6 +429,24 @@ function createUI() {
         '</label>';
     panelBody.appendChild(fillModeDiv);
 
+    /* CATAPULT TARGET */
+    var catTarget = getCookie(catapultTargetCookieName) || 'Edifício principal';
+    var catBuildings = [
+        'Edifício principal','Quartel','Estábulo','Oficina','Torre de vigia',
+        'Academia','Ferreiro','Praça de Reuniões','Estátua','Mercado',
+        'Bosque','Poço de Argila','Mina de Ferro','Fazenda','Armazém','Muralha'
+    ];
+    var catDiv = document.createElement('div');
+    catDiv.style.cssText = 'margin-bottom:8px;padding:6px 8px;background:#0d1117;border:1px solid #3d5a99;border-radius:4px;font-size:11px;';
+    catDiv.innerHTML =
+        '<div style="color:#7aa2d4;margin-bottom:4px;font-weight:bold">🎯 Alvo das catapultas:</div>' +
+        '<select id="catapultTargetSelect" style="width:100%;font-size:11px;padding:2px;">' +
+        catBuildings.map(function(b) {
+            return '<option value="' + b + '"' + (catTarget === b ? ' selected' : '') + '>' + b + '</option>';
+        }).join('') +
+        '</select>';
+    panelBody.appendChild(catDiv);
+
     /* UNIT BOXES */
     var cands    = safeParse(getCookie(candidateCookieName), {spear:true,sword:true,axe:true,spy:false,light:true,heavy:true,ram:true,catapult:true});
     var maxUnits = getMaxUnits();
@@ -527,6 +544,10 @@ function createUI() {
         };
     });
 
+    document.getElementById('catapultTargetSelect').onchange = function() {
+        setCookie(catapultTargetCookieName, this.value, 365);
+    };
+
     tplSelect.onchange = function() {
         setCookie('troopTemplateName', this.value, 365);
         syncTemplateToScriptBoxes(this.value);
@@ -605,6 +626,26 @@ async function main() {
         var congratsTotal = getCookie('showCongrats');
         if (congratsTotal) {
             deleteCookie('showCongrats');
+
+            // Som de conclusão — beeps ascendentes via Web Audio API
+            try {
+                var ctx = new (window.AudioContext || window.webkitAudioContext)();
+                var notes = [523, 659, 784, 1047]; // C5 E5 G5 C6
+                notes.forEach(function(freq, i) {
+                    var osc = ctx.createOscillator();
+                    var gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.type = 'sine';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.18);
+                    gain.gain.linearRampToValueAtTime(0.4, ctx.currentTime + i * 0.18 + 0.05);
+                    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + i * 0.18 + 0.25);
+                    osc.start(ctx.currentTime + i * 0.18);
+                    osc.stop(ctx.currentTime + i * 0.18 + 0.3);
+                });
+            } catch(e) {}
+
             var popup = document.createElement('div');
             popup.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
                 'background:#1a1f2e;border:3px solid #3d5a99;border-radius:8px;padding:25px 30px;' +
@@ -699,6 +740,21 @@ async function main() {
                 history.back();
             }, tempo);
         } else {
+            // Seleccionar edifício alvo das catapultas se houver catapultas no ataque
+            var catInput = document.querySelector('input[name="catapult"]');
+            var hasCats  = catInput && parseInt(catInput.value, 10) > 0;
+            if (hasCats) {
+                var targetBuilding = getCookie(catapultTargetCookieName) || 'Edifício principal';
+                var buildingSelect = document.querySelector('select[name="building"]');
+                if (buildingSelect) {
+                    for (var bi = 0; bi < buildingSelect.options.length; bi++) {
+                        if (buildingSelect.options[bi].text.trim() === targetBuilding) {
+                            buildingSelect.selectedIndex = bi;
+                            break;
+                        }
+                    }
+                }
+            }
             setCookie(attackCookieName, 'true', 1);
             var done     = parseInt(getCookie('fakeAttacksDone') || 0, 10);
             var newDone  = done + 1;
@@ -731,6 +787,4 @@ if (EnviarAtaque) {
             setTimeout(waitForTroops, 150);
         }
     })();
-
-    console.log("🔥 Powered by MDS");
 }
