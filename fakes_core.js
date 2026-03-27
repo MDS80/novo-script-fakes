@@ -330,7 +330,7 @@ function createUI() {
     var head = document.createElement('div');
     head.id = 'fakesHead';
     var headTitle = document.createElement('span');
-    headTitle.textContent = 'Fakes Hybrid + Verde Fixed';
+    headTitle.textContent = 'Bota calor! Mete isso a rodar, preguiças.';
     var minBtn = document.createElement('button');
     minBtn.type = 'button';
     minBtn.textContent = '▲';
@@ -512,7 +512,7 @@ function createUI() {
 
     var sigDiv = document.createElement('div');
     sigDiv.style.cssText = 'text-align:center;font-size:9px;color:#3d5a99;padding:4px 0 2px;border-top:1px solid #2a3a55;margin-top:4px;';
-    sigDiv.innerHTML = '⚔️ MDS &nbsp;|&nbsp; <span style="color:#2a3a55">baseado no código original de oSetas</span>';
+    sigDiv.innerHTML = '⚔️ FAKES MDS &nbsp;|&nbsp; <span style="color:#2a3a55">baseado no trabalho original de oSetas</span>';
     panelBody.appendChild(sigDiv);
 
     document.body.appendChild(panel);
