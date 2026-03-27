@@ -3,7 +3,7 @@
 // @include      https://pt*.tribalwars.com.pt/game.php?*screen=place*
 // @author       MDS (baseado no trabalho original de oSetas)
 // ==/UserScript==
-
+console.log("MDS Scripts © 2026");
 /* =============== CONFIGS =============== */
 var tempo        = 500;
 var tempoSwitch  = 1200;
@@ -787,4 +787,5 @@ if (EnviarAtaque) {
             setTimeout(waitForTroops, 150);
         }
     })();
+    console.log("Powered by MDS");
 }
